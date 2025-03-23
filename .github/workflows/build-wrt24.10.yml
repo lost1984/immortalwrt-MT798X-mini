@@ -122,12 +122,19 @@ jobs:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
-    - name: 生成 Release 标签
+    - name: 生成发布标签
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M-immortalwrt-24.10-cmcc_rax3000m-nand")" >> $GITHUB_OUTPUT
         touch release.txt
+        echo "cmcc_rax3000m-nand-24.10 高功率固件" >> release.txt
+        echo "后台：192.168.2.1" >> release.txt
+        echo "账号：root" >> release.txt
+        echo "密码：无" >> release.txt
+        echo "默认主题：Argon" >> release.txt
+        echo "集成插件：ksmb   " >> release.txt
+        echo "编译源码：https://github.com/padavanonly/immortalwrt-mt798x-24.10" >> release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: 上传固件到 Release
