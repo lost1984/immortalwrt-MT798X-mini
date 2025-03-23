@@ -1,4 +1,4 @@
-name: build-wrt24.10
+name: build-wrt24.10-test
 
 on:
   repository_dispatch:
