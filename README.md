@@ -1,1 +1,1 @@
-# immortalwrt-rax3000m-mini
+# immortalwrt-rax3000m-mini 自用学习精简固件
