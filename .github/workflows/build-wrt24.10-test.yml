@@ -1,4 +1,4 @@
-name: build-wrt24.10-test
+name: wrt24.10
 
 on:
   repository_dispatch:
@@ -11,7 +11,7 @@ env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-24.10
   REPO_BRANCH: 2410
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: rax3Km-2410-test.config
+  CONFIG_FILE: rax3Km-2410.config
   DIY_P1_SH: scripts/diy-part1.sh
   DIY_P2_SH: scripts/diy-part2.sh
   UPLOAD_BIN_DIR: false
@@ -25,7 +25,7 @@ jobs:
 
     steps:
     - name: 检出代码
-      uses: actions/checkout@v4  # 更新到 v4，保持最新版本
+      uses: actions/checkout@v4
 
     - name: 初始化环境
       env:
@@ -75,6 +75,18 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
+    - name: 缓存下载的包
+      uses: actions/cache@v3
+      with:
+        path: openwrt/dl
+        key: ${{ runner.os }}-openwrt-dl-${{ hashFiles('openwrt/feeds.conf.default') }}
+
+    - name: 缓存 ccache
+      uses: actions/cache@v3
+      with:
+        path: openwrt/.ccache
+        key: ${{ runner.os }}-openwrt-ccache-${{ hashFiles('openwrt/.config') }}
+
     - name: 下载软件包
       id: package
       run: |
@@ -100,7 +112,7 @@ jobs:
       run: df -hT
 
     - name: 上传 bin 目录
-      uses: actions/upload-artifact@v4  # 更新到 v4
+      uses: actions/upload-artifact@v4
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -116,22 +128,29 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: 上传固件目录
-      uses: actions/upload-artifact@v4  # 更新到 v4
+      uses: actions/upload-artifact@v4
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
-    - name: 生成 Release 标签
+    - name: 生成发布标签
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M-immortalwrt-24.10-cmcc_rax3000m-nand")" >> $GITHUB_OUTPUT
         touch release.txt
+        echo "cmcc_rax3000m-nand-24.10 高功率固件" >> release.txt
+        echo "后台：192.168.2.1" >> release.txt
+        echo "账号：root" >> release.txt
+        echo "密码：无" >> release.txt
+        echo "默认主题：Argon" >> release.txt
+        echo "集成插件：ksmb   " >> release.txt
+        echo "编译源码：https://github.com/padavanonly/immortalwrt-mt798x-24.10" >> release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: 上传固件到 Release
-      uses: softprops/action-gh-release@v2  # 更新到 v2
+      uses: softprops/action-gh-release@v2
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -141,13 +160,13 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
 
     - name: 删除旧的工作流程运行记录
-      uses: Mattraks/delete-workflow-runs@v2  # 更新到 v2
+      uses: Mattraks/delete-workflow-runs@v2
       with:
         retain_days: 0
         keep_minimum_runs: 2
 
     - name: 删除旧的 Releases
-      uses: dev-drprasad/delete-older-releases@v0.3.4  # 使用最新版本
+      uses: dev-drprasad/delete-older-releases@v0.3.4
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       with:
         keep_latest: 3
