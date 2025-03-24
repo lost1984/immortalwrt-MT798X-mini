@@ -1,0 +1,221 @@
+name: "test"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '选择 OpenWrt 版本'
+        required: true
+        type: choice
+        options:
+          - 23.05
+          - 24.10
+        default: '24.10'
+      device:
+        description: '选择要编译的机型'
+        required: true
+        type: choice
+        options:
+          - abt_asr3000
+          - cetron_ct3003
+          - cmcc_a10
+          - cmcc_rax3000m-emmc
+          - cmcc_rax3000m
+          - cmcc_rax3000m-emmc-usboffload
+          - cmcc_rax3000m-usboffload
+          - h3c_nx30pro
+          - huasifei_wh3000-emmc
+          - imou_lc-hx3001
+          - jcg_q30
+          - konka_komi-a31
+          - livinet_zr-3020
+          - mt7981-360-t7-108M
+          - mt7981-clt-r30b1
+          - mt7981-clt-r30b1-112M
+          - xiaomi_mi-router-ax3000t
+          - xiaomi_mi-router-ax3000t-stock
+          - xiaomi_mi-router-wr30u-112m
+          - xiaomi_mi-router-wr30u-stock
+
+permissions:
+  contents: write  # 包含 releases 的写权限
+
+env:
+  REPO_URL: ${{ github.event.inputs.version == '23.05' && 'https://github.com/padavanonly/immortalwrt-mt798x-23.05' || 'https://github.com/padavanonly/immortalwrt-mt798x-24.10' }}
+  REPO_BRANCH: ${{ github.event.inputs.version == '23.05' && 'openwrt-23.05' || '2410' }}
+  BASE_CONFIG_FILE: ${{ github.event.inputs.version == '23.05' && '2305.config' || '2410.config' }}
+  DIY_P1_SH: scripts/diy-part1.sh
+  DIY_P2_SH: scripts/diy-part2.sh
+  UPLOAD_FIRMWARE: true
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 初始化环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
+          libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+          libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 \
+          python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo \
+          uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+        sudo timedatectl set-timezone "$TZ"
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+
+    - name: 克隆源码
+      working-directory: /workdir
+      run: |
+        df -hT $PWD
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: 调试：检查文件是否存在
+      run: |
+        ls -la $GITHUB_WORKSPACE/scripts/
+
+    - name: 加载自定义 Feeds
+      run: |
+        cd openwrt
+        chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
+        $GITHUB_WORKSPACE/$DIY_P1_SH
+
+    - name: 更新 Feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+
+    - name: 安装 Feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds install -a
+
+    - name: 转换机型名称并加载配置
+      run: |
+        # 根据版本转换机型名称（仅对 23.05 进行转换）
+        if [ "${{ github.event.inputs.version }}" == "23.05" ]; then
+          case "${{ github.event.inputs.device }}" in
+            "cmcc_rax3000m-usboffload")
+              DEVICE="cmcc_rax3000m"
+              echo "转换机型：cmcc_rax3000m-usboffload -> cmcc_rax3000m (23.05)"
+              ;;
+            "cmcc_rax3000m-emmc-usboffload")
+              DEVICE="cmcc_rax3000m-emmc"
+              echo "转换机型：cmcc_rax3000m-emmc-usboffload -> cmcc_rax3000m-emmc (23.05)"
+              ;;
+            "huasifei_wh3000-emmc")
+              echo "错误：huasifei_wh3000-emmc 在 23.05 中不支持"
+              exit 1
+              ;;
+            *)
+              DEVICE="${{ github.event.inputs.device }}"
+              ;;
+          esac
+        else
+          # 24.10 不进行转换，直接使用用户选择的机型
+          DEVICE="${{ github.event.inputs.device }}"
+          if [ "$DEVICE" == "huasifei_wh3000-emmc" ]; then
+            echo "警告：huasifei_wh3000-emmc 是 24.10 的新宠，享受吧！"
+          fi
+        fi
+        # 设置环境变量供后续步骤使用
+        echo "DEVICE=$DEVICE" >> $GITHUB_ENV
+        # 加载自定义配置并设置目标设备
+        [ -e files ] && mv files openwrt/files
+        [ -e $BASE_CONFIG_FILE ] && cp $BASE_CONFIG_FILE openwrt/.config
+        cd openwrt
+        sed -i "/CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_/d" .config
+        echo "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_$DEVICE=y" >> .config
+        echo "CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE_$DEVICE=\"\"" >> .config
+        make defconfig
+
+    - name: 检查配置
+      id: check_config
+      run: |
+        cd openwrt
+        if grep -q "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_${{ env.DEVICE }}=y" .config; then
+          echo "配置检查通过：目标设备 ${{ env.DEVICE }} 已正确配置"
+          echo "config_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "错误：配置检查失败，未找到目标设备 ${{ env.DEVICE }} 的配置"
+          exit 1
+        fi
+
+    - name: 执行自定义脚本
+      if: steps.check_config.outputs.config_status == 'success'
+      run: |
+        cd openwrt
+        chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
+        $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    - name: 下载软件包
+      if: steps.check_config.outputs.config_status == 'success'
+      run: |
+        cd openwrt
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: 编译固件
+      id: compile
+      if: steps.check_config.outputs.config_status == 'success'
+      run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile for ${{ env.DEVICE }}"
+        make -j$(nproc) V=s || make -j1 V=s
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+    - name: 检查磁盘空间使用情况
+      if: steps.check_config.outputs.config_status == 'success' && !cancelled()
+      run: df -hT
+
+    - name: 整理文件
+      id: organize
+      if: steps.check_config.outputs.config_status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: |
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: 上传固件目录
+      uses: actions/upload-artifact@v4
+      if: steps.check_config.outputs.config_status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: OpenWrt_firmware_${{ github.event.inputs.version }}_${{ env.DEVICE }}${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
+
+    - name: 发布固件：砖厂大师的最新杰作
+      if: steps.check_config.outputs.config_status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: "v${{ github.event.inputs.version }}_${{ env.DEVICE }}_${{ env.FILE_DATE }}"
+        name: "MT7981 固件 ${{ github.event.inputs.version }} - ${{ env.DEVICE }}"
+        body: |
+          🎉 **砖厂大师最新力作发布啦！** 🎉  
+          经过无数次“烧砖”实验，这款固件终于出炉！  
+          - **版本**: ${{ github.event.inputs.version }}  
+          - **机型**: ${{ env.DEVICE }}  
+          - **特别说明**: 如果你的路由器变砖了，别怪我，可能是它自己想退休了！  
+          - **使用建议**: 刷之前请备份，刷之后请祈祷，刷完变砖请点个 Star安慰我！  
+          快来下载体验吧，MT7981 的“魔法”在召唤你！  
+        files: |
+          ${{ env.FIRMWARE }}/*.bin
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
