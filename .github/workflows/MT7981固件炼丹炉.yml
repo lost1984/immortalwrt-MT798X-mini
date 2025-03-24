@@ -43,7 +43,7 @@ permissions:
 env:
   REPO_URL: ${{ github.event.inputs.version == '23.05' && 'https://github.com/padavanonly/immortalwrt-mt798x-23.05' || 'https://github.com/padavanonly/immortalwrt-mt798x-24.10' }}
   REPO_BRANCH: ${{ github.event.inputs.version == '23.05' && 'openwrt-23.05' || '2410' }}
-  BASE_CONFIG_FILE: ${{ github.event.inputs.version == '23.05' && 'rax3Km-2305.config' || 'rax3Km-2410.config' }}
+  BASE_CONFIG_FILE: ${{ github.event.inputs.version == '23.05' && '2305.config' || '2410.config' }}
   DIY_P1_SH: scripts/diy-part1.sh
   DIY_P2_SH: scripts/diy-part2.sh
   UPLOAD_FIRMWARE: true
