@@ -38,9 +38,7 @@ on:
           - xiaomi_mi-router-wr30u-stock
 
 permissions:
-  contents: write
-  # 为发布固件添加 releases 权限
-  releases: write
+  contents: write  # 包含 releases 的写权限
 
 env:
   REPO_URL: ${{ github.event.inputs.version == '23.05' && 'https://github.com/padavanonly/immortalwrt-mt798x-23.05' || 'https://github.com/padavanonly/immortalwrt-mt798x-24.10' }}
@@ -213,4 +211,11 @@ jobs:
           - **版本**: ${{ github.event.inputs.version }}  
           - **机型**: ${{ env.DEVICE }}  
           - **特别说明**: 如果你的路由器变砖了，别怪我，可能是它自己想退休了！  
-          - **使用建议**: 刷之前请备份，刷之后请祈祷，刷完变砖请点个 Star安慰
+          - **使用建议**: 刷之前请备份，刷之后请祈祷，刷完变砖请点个 Star安慰我！  
+          快来下载体验吧，MT7981 的“魔法”在召唤你！  
+        files: |
+          ${{ env.FIRMWARE }}/*.bin
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
