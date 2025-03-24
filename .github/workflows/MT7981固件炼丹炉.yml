@@ -102,54 +102,70 @@ jobs:
         cd openwrt
         ./scripts/feeds install -a
 
-    - name: 加载自定义配置并设置目标设备
+    - name: 转换机型名称并加载配置
       run: |
+        # 根据版本转换机型名称
+        if [ "${{ github.event.inputs.version }}" == "23.05" ]; then
+          case "${{ github.event.inputs.device }}" in
+            "cmcc_rax3000m-usboffload")
+              DEVICE="cmcc_rax3000m"
+              echo "转换机型：cmcc_rax3000m-usboffload -> cmcc_rax3000m (23.05)"
+              ;;
+            "cmcc_rax3000m-emmc-usboffload")
+              DEVICE="cmcc_rax3000m-emmc"
+              echo "转换机型：cmcc_rax3000m-emmc-usboffload -> cmcc_rax3000m-emmc (23.05)"
+              ;;
+            *)
+              DEVICE="${{ github.event.inputs.device }}"
+              ;;
+          esac
+        else  # 24.10
+          case "${{ github.event.inputs.device }}" in
+            "cmcc_rax3000m")
+              DEVICE="cmcc_rax3000m-usboffload"
+              echo "转换机型：cmcc_rax3000m -> cmcc_rax3000m-usboffload (24.10)"
+              ;;
+            "cmcc_rax3000m-emmc")
+              DEVICE="cmcc_rax3000m-emmc-usboffload"
+              echo "转换机型：cmcc_rax3000m-emmc -> cmcc_rax3000m-emmc-usboffload (24.10)"
+              ;;
+            *)
+              DEVICE="${{ github.event.inputs.device }}"
+              ;;
+          esac
+        fi
+        # 设置环境变量供后续步骤使用
+        echo "DEVICE=$DEVICE" >> $GITHUB_ENV
+        # 加载自定义配置并设置目标设备
         [ -e files ] && mv files openwrt/files
         [ -e $BASE_CONFIG_FILE ] && cp $BASE_CONFIG_FILE openwrt/.config
         cd openwrt
         sed -i "/CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_/d" .config
-        echo "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_${{ github.event.inputs.device }}=y" >> .config
-        echo "CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE_${{ github.event.inputs.device }}=\"\"" >> .config
+        echo "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_$DEVICE=y" >> .config
+        echo "CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE_$DEVICE=\"\"" >> .config
         make defconfig
-
-    - name: 验证机型兼容性
-      id: validate_device
-      run: |
-        if [ "${{ github.event.inputs.version }}" == "23.05" ]; then
-          VALID_DEVICES=("abt_asr3000" "cetron_ct3003" "cmcc_a10" "cmcc_rax3000m-emmc" "cmcc_rax3000m" "h3c_nx30pro" "imou_lc-hx3001" "jcg_q30" "konka_komi-a31" "livinet_zr-3020" "mt7981-360-t7-108M" "mt7981-clt-r30b1" "mt7981-clt-r30b1-112M" "xiaomi_mi-router-ax3000t" "xiaomi_mi-router-ax3000t-stock" "xiaomi_mi-router-wr30u-112m" "xiaomi_mi-router-wr30u-stock")
-        else
-          VALID_DEVICES=("abt_asr3000" "cetron_ct3003" "cmcc_a10" "cmcc_rax3000m-emmc-usboffload" "cmcc_rax3000m-usboffload" "h3c_nx30pro" "imou_lc-hx3001" "jcg_q30" "konka_komi-a31" "livinet_zr-3020" "mt7981-360-t7-108M" "mt7981-clt-r30b1" "mt7981-clt-r30b1-112M" "xiaomi_mi-router-ax3000t" "xiaomi_mi-router-ax3000t-stock" "xiaomi_mi-router-wr30u-112m" "xiaomi_mi-router-wr30u-stock")
-        fi
-        if [[ " ${VALID_DEVICES[*]} " =~ " ${{ github.event.inputs.device }} " ]]; then
-          echo "机型 ${{ github.event.inputs.device }} 在版本 ${{ github.event.inputs.version }} 中有效"
-          echo "device_valid=true" >> $GITHUB_OUTPUT
-        else
-          echo "错误：机型 ${{ github.event.inputs.device }} 在版本 ${{ github.event.inputs.version }} 中不受支持"
-          exit 1
-        fi
 
     - name: 检查配置
       id: check_config
-      if: steps.validate_device.outputs.device_valid == 'true'
       run: |
         cd openwrt
-        if grep -q "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_${{ github.event.inputs.device }}=y" .config; then
-          echo "配置检查通过：目标设备 ${{ github.event.inputs.device }} 已正确配置"
+        if grep -q "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_${{ env.DEVICE }}=y" .config; then
+          echo "配置检查通过：目标设备 ${{ env.DEVICE }} 已正确配置"
           echo "config_status=success" >> $GITHUB_OUTPUT
         else
-          echo "错误：配置检查失败，未找到目标设备 ${{ github.event.inputs.device }} 的配置"
+          echo "错误：配置检查失败，未找到目标设备 ${{ env.DEVICE }} 的配置"
           exit 1
         fi
 
     - name: 执行自定义脚本
-      if: steps.validate_device.outputs.device_valid == 'true' && steps.check_config.outputs.config_status == 'success'
+      if: steps.check_config.outputs.config_status == 'success'
       run: |
         cd openwrt
         chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
     - name: 下载软件包
-      if: steps.validate_device.outputs.device_valid == 'true' && steps.check_config.outputs.config_status == 'success'
+      if: steps.check_config.outputs.config_status == 'success'
       run: |
         cd openwrt
         make download -j8
@@ -158,21 +174,21 @@ jobs:
 
     - name: 编译固件
       id: compile
-      if: steps.validate_device.outputs.device_valid == 'true' && steps.check_config.outputs.config_status == 'success'
+      if: steps.check_config.outputs.config_status == 'success'
       run: |
         cd openwrt
-        echo -e "$(nproc) thread compile for ${{ github.event.inputs.device }}"
+        echo -e "$(nproc) thread compile for ${{ env.DEVICE }}"
         make -j$(nproc) V=s || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
     - name: 检查磁盘空间使用情况
-      if: steps.validate_device.outputs.device_valid == 'true' && steps.check_config.outputs.config_status == 'success' && !cancelled()
+      if: steps.check_config.outputs.config_status == 'success' && !cancelled()
       run: df -hT
 
     - name: 整理文件
       id: organize
-      if: steps.validate_device.outputs.device_valid == 'true' && steps.check_config.outputs.config_status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: steps.check_config.outputs.config_status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages
@@ -181,7 +197,7 @@ jobs:
 
     - name: 上传固件目录
       uses: actions/upload-artifact@v4
-      if: steps.validate_device.outputs.device_valid == 'true' && steps.check_config.outputs.config_status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
+      if: steps.check_config.outputs.config_status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware_${{ github.event.inputs.version }}_${{ github.event.inputs.device }}${{ env.FILE_DATE }}
+        name: OpenWrt_firmware_${{ github.event.inputs.version }}_${{ env.DEVICE }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
