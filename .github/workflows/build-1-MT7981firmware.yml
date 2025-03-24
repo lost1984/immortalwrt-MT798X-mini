@@ -72,10 +72,14 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
+    - name: 调试：检查文件是否存在
+      run: |
+        ls -la $GITHUB_WORKSPACE/scripts/
+
     - name: 加载自定义 Feeds
       run: |
         cd openwrt
-        chmod +x $DIY_P1_SH
+        chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: 更新 Feeds
@@ -99,10 +103,28 @@ jobs:
         echo "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_${{ github.event.inputs.device }}=y" >> .config
         echo "CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE_${{ github.event.inputs.device }}=\"\"" >> .config
         make defconfig
-        chmod +x $DIY_P2_SH
+
+    - name: 检查配置
+      id: check_config
+      run: |
+        cd openwrt
+        if grep -q "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_${{ github.event.inputs.device }}=y" .config; then
+          echo "配置检查通过：目标设备 ${{ github.event.inputs.device }} 已正确配置"
+          echo "config_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "错误：配置检查失败，未找到目标设备 ${{ github.event.inputs.device }} 的配置"
+          exit 1
+        fi
+
+    - name: 执行自定义脚本
+      if: steps.check_config.outputs.config_status == 'success'
+      run: |
+        cd openwrt
+        chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
     - name: 下载软件包
+      if: steps.check_config.outputs.config_status == 'success'
       run: |
         cd openwrt
         make download -j8
@@ -111,6 +133,7 @@ jobs:
 
     - name: 编译固件
       id: compile
+      if: steps.check_config.outputs.config_status == 'success'
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile for ${{ github.event.inputs.device }}"
@@ -119,12 +142,12 @@ jobs:
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
     - name: 检查磁盘空间使用情况
-      if: (!cancelled())
+      if: steps.check_config.outputs.config_status == 'success' && !cancelled()
       run: df -hT
 
     - name: 整理文件
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: steps.check_config.outputs.config_status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages
@@ -133,7 +156,7 @@ jobs:
 
     - name: 上传固件目录
       uses: actions/upload-artifact@v4
-      if: steps.organize.outputs.status == 'success' && !cancelled()
+      if: steps.check_config.outputs.config_status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware_${{ github.event.inputs.device }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
