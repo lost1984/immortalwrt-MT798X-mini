@@ -1,0 +1,203 @@
+name: "MT7981固件炼丹炉：源码更新检测器与批量编译大师"
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # 每天0点运行一次
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '选择 OpenWrt 版本'
+        required: true
+        type: choice
+        options:
+          - 23.05
+          - 24.10
+        default: '24.10'
+
+permissions:
+  contents: write
+
+env:
+  REPO_URL: ${{ github.event.inputs.version == '23.05' && 'https://github.com/padavanonly/immortalwrt-mt798x-23.05' || 'https://github.com/padavanonly/immortalwrt-mt798x-24.10' }}
+  REPO_BRANCH: ${{ github.event.inputs.version == '23.05' && 'openwrt-23.05' || '2410' }}
+  BASE_CONFIG_FILE: ${{ github.event.inputs.version == '23.05' && '2305.config' || '2410.config' }}
+  DIY_P1_SH: scripts/diy-part1.sh
+  DIY_P2_SH: scripts/diy-part2.sh
+  UPLOAD_FIRMWARE: true
+  TZ: Asia/Shanghai
+  DEVICE_LIST: "cmcc_rax3000m cmcc_rax3000m-emmc h3c_nx30pro xiaomi_mi-router-ax3000t xiaomi_mi-router-wr30u-stock"
+
+jobs:
+  check-and-build:
+    runs-on: self-hosted  # 使用自托管运行器
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 获取上游源码最新提交
+      id: check_update
+      run: |
+        VERSION=${{ github.event.inputs.version || '24.10' }}
+        echo "检查版本: $VERSION"
+        REPO_URL=${{ env.REPO_URL }}
+        REPO_BRANCH=${{ env.REPO_BRANCH }}
+
+        # 获取上游最新提交 SHA
+        LATEST_COMMIT=$(git ls-remote $REPO_URL $REPO_BRANCH | awk '{print $1}')
+        echo "上游最新提交: $LATEST_COMMIT"
+
+        # 检查本地记录的最后提交
+        if [ -f "last_commit_$VERSION.txt" ]; then
+          LAST_COMMIT=$(cat last_commit_$VERSION.txt)
+        else
+          LAST_COMMIT=""
+        fi
+        echo "本地记录的最后提交: $LAST_COMMIT"
+
+        # 比较提交，决定是否需要编译
+        if [ "$LATEST_COMMIT" != "$LAST_COMMIT" ]; then
+          echo "检测到源码更新，触发批量编译..."
+          echo "needs_build=true" >> $GITHUB_OUTPUT
+          echo "$LATEST_COMMIT" > last_commit_$VERSION.txt
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+        else
+          echo "源码无更新，跳过编译。"
+          echo "needs_build=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: 提交更新记录
+      if: steps.check_update.outputs.needs_build == 'true'
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add last_commit_${{ env.VERSION }}.txt
+        git commit -m "更新 ${{'env.VERSION'}} 的最后提交记录"
+        git push
+
+    - name: 初始化环境
+      if: steps.check_update.outputs.needs_build == 'true'
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        # Oracle Linux 使用 dnf 安装依赖
+        sudo dnf update -y
+        sudo dnf install -y \
+          autoconf automake binutils bison bzip2 ccache cmake curl \
+          flex gawk gcc gcc-c++ git gperf glibc-devel glibc-headers \
+          make ncurses-devel openssl-devel patch perl perl-Thread-Queue \
+          python3 python3-devel readline-devel subversion tar unzip \
+          vim wget xz zlib-devel
+        # 设置时区
+        sudo timedatectl set-timezone "$TZ"
+        mkdir -p /workdir
+        sudo chown $USER:$USER /workdir
+
+    - name: 克隆源码
+      if: steps.check_update.outputs.needs_build == 'true'
+      working-directory: /workdir
+      run: |
+        df -hT $PWD
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: 加载自定义 Feeds
+      if: steps.check_update.outputs.needs_build == 'true'
+      run: |
+        cd openwrt
+        chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
+        $GITHUB_WORKSPACE/$DIY_P1_SH
+
+    - name: 更新 Feeds
+      if: steps.check_update.outputs.needs_build == 'true'
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+
+    - name: 安装 Feeds
+      if: steps.check_update.outputs.needs_build == 'true'
+      run: |
+        cd openwrt
+        ./scripts/feeds install -a
+
+    - name: 依次编译所有机型
+      if: steps.check_update.outputs.needs_build == 'true'
+      run: |
+        for DEVICE in ${{ env.DEVICE_LIST }}; do
+          echo "开始编译机型: $DEVICE"
+
+          # 23.05 机型转换逻辑
+          if [ "${{ env.VERSION }}" == "23.05" ]; then
+            case "$DEVICE" in
+              "cmcc_rax3000m-usboffload")
+                DEVICE="cmcc_rax3000m"
+                echo "转换机型：cmcc_rax3000m-usboffload -> cmcc_rax300m (23.05)"
+                ;;
+              "cmcc_rax3000m-emmc-usboffload")
+                DEVICE="cmcc_rax3000m-emmc"
+                echo "转换机型：cmcc_rax3000m-emmc-usboffload -> cmcc_rax3000m-emmc (23.05)"
+                ;;
+              "huasifei_wh3000-emmc")
+                echo "错误：huasifei_wh3000-emmc 在 23.05 中不支持，跳过"
+                continue
+                ;;
+            esac
+          else
+            if [ "$DEVICE" == "huasifei_wh3000-emmc" ]; then
+              echo "警告：huasifei_wh3000-emmc 是 24.10 的新宠，享受吧！"
+            fi
+          fi
+
+          # 加载配置
+          cd $GITHUB_WORKSPACE/openwrt
+          [ -e $GITHUB_WORKSPACE/files ] && mv $GITHUB_WORKSPACE/files $GITHUB_WORKSPACE/openwrt/files
+          [ -e $GITHUB_WORKSPACE/$BASE_CONFIG_FILE ] && cp $GITHUB_WORKSPACE/$BASE_CONFIG_FILE $GITHUB_WORKSPACE/openwrt/.config
+          sed -i "/CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_/d" .config
+          echo "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_$DEVICE=y" >> .config
+          echo "CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE_$DEVICE=\"\"" >> .config
+          make defconfig
+
+          # 检查配置
+          if grep -q "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_$DEVICE=y" .config; then
+            echo "配置检查通过：目标设备 $DEVICE 已正确配置"
+          else
+            echo "错误：配置检查失败，未找到目标设备 $DEVICE 的配置，跳过"
+            continue
+          fi
+
+          # 执行自定义脚本
+          chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+
+          # 下载软件包
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+          # 编译固件
+          echo -e "$(nproc) thread compile for $DEVICE"
+          make -j$(nproc) V=s || make -j1 V=s
+
+          # 整理文件
+          cd bin/targets/*/*
+          rm -rf packages
+          FIRMWARE_DIR=$PWD
+          FILE_DATE=$(date +"%Y%m%d%H%M")
+          echo "固件目录: $FIRMWARE_DIR"
+
+          # 上传到 WebDAV
+          for file in $FIRMWARE_DIR/*.bin; do
+            if [ -f "$file" ]; then
+              curl -u ${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASSWORD }} \
+                -T "$file" \
+                "${{ secrets.WEBDAV_URL }}/${{ env.VERSION }}/$DEVICE/$(basename $file)_$FILE_DATE"
+              echo "成功上传 $DEVICE 的固件: $(basename $file)"
+            else
+              echo "警告：$DEVICE 的固件文件未找到，跳过上传"
+            fi
+          done
+
+          # 清理编译产物
+          cd $GITHUB_WORKSPACE/openwrt
+          make clean
+          echo "完成 $DEVICE 的编译和上传，进入下一个机型..."
+        done
