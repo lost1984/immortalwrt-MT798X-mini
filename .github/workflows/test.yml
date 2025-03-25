@@ -34,46 +34,7 @@ jobs:
     - name: 检出代码
       uses: actions/checkout@v4
 
-    - name: 获取上游源码最新提交
-      id: check_update
-      run: |
-        VERSION=${{ github.event.inputs.version || '24.10' }}
-        echo "检查版本: $VERSION"
-        REPO_URL=${{ env.REPO_URL }}
-        REPO_BRANCH=${{ env.REPO_BRANCH }}
-
-        # 获取上游最新提交 SHA
-        LATEST_COMMIT=$(git ls-remote $REPO_URL $REPO_BRANCH | awk '{print $1}')
-        echo "上游最新提交: $LATEST_COMMIT"
-
-        # 检查本地记录的最后提交
-        if [ -f "last_commit_$VERSION.txt" ]; then
-          LAST_COMMIT=$(cat last_commit_$VERSION.txt)
-        else
-          LAST_COMMIT=""
-        fi
-        echo "本地记录的最后提交: $LAST_COMMIT"
-
-        # 比较提交，决定是否需要编译
-        if [ "$LATEST_COMMIT" != "$LAST_COMMIT" ]; then
-          echo "检测到源码更新，触发批量编译..."
-          echo "needs_build=true" >> $GITHUB_OUTPUT
-          echo "$LATEST_COMMIT" > last_commit_$VERSION.txt
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-        else
-          echo "源码无更新，跳过编译。"
-          echo "needs_build=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: 提交更新记录
-      if: steps.check_update.outputs.needs_build == 'true'
-      run: |
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        git add last_commit_${{ env.VERSION }}.txt
-        git commit -m "更新 ${{'env.VERSION'}} 的最后提交记录"
-        git push
-
+    
     - name: 初始化环境
       if: steps.check_update.outputs.needs_build == 'true'
       env:
