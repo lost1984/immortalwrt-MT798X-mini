@@ -1,4 +1,4 @@
-name: "MT7981固件炼丹炉：源码更新检测器与批量编译大师"
+name: "MT7981固件炼丹炉：批量编译大师"
 
 on:
   schedule:
@@ -25,18 +25,17 @@ env:
   DIY_P2_SH: scripts/diy-part2.sh
   UPLOAD_FIRMWARE: true
   TZ: Asia/Shanghai
-  DEVICE_LIST: "cmcc_rax3000m cmcc_rax3000m-emmc h3c_nx30pro xiaomi_mi-router-ax3000t xiaomi_mi-router-wr30u-stock"
+  DEVICE_LIST: "abt_asr3000 cetron_ct3003 cmcc_a10 cmcc_rax3000m-emmc cmcc_rax3000m cmcc_rax3000m-emmc-usboffload cmcc_rax3000m-usboffload h3c_nx30pro huasifei_wh3000-emmc imou_lc-hx3001 jcg_q30 konka_komi-a31 livinet_zr-3020 mt7981-360-t7-108M mt7981-clt-r30b1 mt7981-clt-r30b1-112M xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-stock xiaomi_mi-router-wr30u-112m xiaomi_mi-router-wr30u-stock"
+  VERSION: ${{ github.event.inputs.version || '24.10' }}
 
 jobs:
-  check-and-build:
+  build:
     runs-on: self-hosted  # 使用自托管运行器
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
 
-    
     - name: 初始化环境
-      if: steps.check_update.outputs.needs_build == 'true'
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
@@ -54,7 +53,6 @@ jobs:
         sudo chown $USER:$USER /workdir
 
     - name: 克隆源码
-      if: steps.check_update.outputs.needs_build == 'true'
       working-directory: /workdir
       run: |
         df -hT $PWD
@@ -62,27 +60,24 @@ jobs:
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: 加载自定义 Feeds
-      if: steps.check_update.outputs.needs_build == 'true'
       run: |
         cd openwrt
         chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: 更新 Feeds
-      if: steps.check_update.outputs.needs_build == 'true'
       run: |
         cd openwrt
         ./scripts/feeds update -a
 
     - name: 安装 Feeds
-      if: steps.check_update.outputs.needs_build == 'true'
       run: |
         cd openwrt
         ./scripts/feeds install -a
 
     - name: 依次编译所有机型
-      if: steps.check_update.outputs.needs_build == 'true'
       run: |
+        echo "开始批量编译，版本: ${{ env.VERSION }}"
         for DEVICE in ${{ env.DEVICE_LIST }}; do
           echo "开始编译机型: $DEVICE"
 
