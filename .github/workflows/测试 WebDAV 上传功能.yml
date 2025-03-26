@@ -1,20 +1,28 @@
-name: "测试 WebDAV 上传功能"
+name: "测试 WebDAV 上传 .tar.gz 功能"
 
 on:
   workflow_dispatch:  # 手动触发，用于测试
 
 jobs:
   test-webdav-upload:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04  # 使用 GitHub 托管的 Ubuntu 22.04 运行器
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
 
-    - name: 创建测试文件
+    - name: 创建测试文件并压缩
       run: |
-        echo "这是一个测试文件，用于验证 WebDAV 上传功能" > test-file.txt
-        echo "测试文件 2" > test-file-2.txt
-        ls -l
+        # 创建一个测试目录和文件
+        mkdir -p test-dir
+        echo "这是一个测试文件，用于验证 WebDAV 上传功能" > test-dir/test-file.txt
+        echo "测试文件 2" > test-dir/test-file-2.txt
+        ls -l test-dir
+
+        # 压缩为 .tar.gz
+        FILE_DATE=$(date +"%Y%m%d%H%M")
+        tar -czf "test-archive_$FILE_DATE.tar.gz" -C test-dir .
+        ls -l "test-archive_$FILE_DATE.tar.gz"
+        echo "已生成压缩文件: test-archive_$FILE_DATE.tar.gz"
 
     - name: 测试 WebDAV 服务器连通性
       run: |
@@ -22,19 +30,17 @@ jobs:
         curl -u ${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASSWORD }} \
           -I "${{ secrets.WEBDAV_URL }}/test-upload/" || echo "连通性测试失败"
 
-    - name: 上传测试文件到 WebDAV
+    - name: 上传 .tar.gz 文件到 WebDAV
       run: |
         FILE_DATE=$(date +"%Y%m%d%H%M")
-        for file in test-file.txt test-file-2.txt; do
-          echo "尝试上传: $file"
-          curl -v -u ${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASSWORD }} \
-            -T "$file" \
-            "${{ secrets.WEBDAV_URL }}/test-upload/$(basename $file)_$FILE_DATE" || {
-              echo "上传 $file 失败"
-              exit 1
-            }
-          echo "成功上传: $(basename $file)"
-        done
+        echo "尝试上传: test-archive_$FILE_DATE.tar.gz"
+        curl -v -u ${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASSWORD }} \
+          -T "test-archive_$FILE_DATE.tar.gz" \
+          "${{ secrets.WEBDAV_URL }}/test-upload/test-archive_$FILE_DATE.tar.gz" || {
+            echo "上传 test-archive_$FILE_DATE.tar.gz 失败"
+            exit 1
+          }
+        echo "成功上传: test-archive_$FILE_DATE.tar.gz"
 
     - name: 检查 WebDAV 目录（可选）
       run: |
