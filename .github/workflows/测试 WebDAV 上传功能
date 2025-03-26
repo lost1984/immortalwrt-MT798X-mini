@@ -1,0 +1,38 @@
+name: "测试 WebDAV 上传功能"
+
+on:
+  workflow_dispatch:  # 手动触发，用于测试
+
+jobs:
+  test-webdav-upload:
+    runs-on: ubuntu-22.04  # 使用 GitHub 托管的 Ubuntu 22.04 运行器
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 创建测试文件
+      run: |
+        # 创建一个简单的测试文件
+        echo "这是一个测试文件，用于验证 WebDAV 上传功能" > test-file.txt
+        # 创建另一个测试文件
+        echo "测试文件 2" > test-file-2.txt
+        ls -l
+
+    - name: 上传测试文件到 WebDAV
+      run: |
+        # 使用 curl 上传文件到 WebDAV
+        FILE_DATE=$(date +"%Y%m%d%H%M")
+        for file in test-file.txt test-file-2.txt; do
+          curl -u ${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASSWORD }} \
+            -T "$file" \
+            "${{ secrets.WEBDAV_URL }}/test-upload/$(basename $file)_$FILE_DATE"
+          echo "已上传: $(basename $file)"
+        done
+
+    - name: 检查上传结果
+      run: |
+        # 可选：列出 WebDAV 目录，验证上传（需要 WebDAV 服务器支持 PROPFIND）
+        curl -u ${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASSWORD }} \
+          -X PROPFIND \
+          "${{ secrets.WEBDAV_URL }}/test-upload/" \
+          -H "Depth: 1"
