@@ -1,4 +1,4 @@
-name: "MT7981固件炼丹炉：批量编译大师"
+name: "MT7981固件炼丹炉：逐个编译大师"
 
 on:
   schedule:
@@ -30,7 +30,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted  # 使用自托管运行器
+    runs-on: ubuntu-22.04  # 使用 GitHub 托管的 Ubuntu 22.04 运行器
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
@@ -39,18 +39,21 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        # Oracle Linux 使用 dnf 安装依赖
-        sudo dnf update -y
-        sudo dnf install -y \
-          autoconf automake binutils bison bzip2 ccache cmake curl \
-          flex gawk gcc gcc-c++ git gperf glibc-devel glibc-headers \
-          make ncurses-devel openssl-devel patch perl perl-Thread-Queue \
-          python3 python3-devel readline-devel subversion tar unzip \
-          vim wget xz zlib-devel
-        # 设置时区
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
+          libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+          libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 \
+          python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo \
+          uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
-        mkdir -p /workdir
-        sudo chown $USER:$USER /workdir
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
 
     - name: 克隆源码
       working-directory: /workdir
@@ -75,9 +78,9 @@ jobs:
         cd openwrt
         ./scripts/feeds install -a
 
-    - name: 依次编译所有机型
+    - name: 逐个编译所有机型
       run: |
-        echo "开始批量编译，版本: ${{ env.VERSION }}"
+        echo "开始逐个编译所有机型，版本: ${{ env.VERSION }}"
         for DEVICE in ${{ env.DEVICE_LIST }}; do
           echo "开始编译机型: $DEVICE"
 
@@ -86,7 +89,7 @@ jobs:
             case "$DEVICE" in
               "cmcc_rax3000m-usboffload")
                 DEVICE="cmcc_rax3000m"
-                echo "转换机型：cmcc_rax3000m-usboffload -> cmcc_rax300m (23.05)"
+                echo "转换机型：cmcc_rax3000m-usboffload -> cmcc_rax3000m (23.05)"
                 ;;
               "cmcc_rax3000m-emmc-usboffload")
                 DEVICE="cmcc_rax3000m-emmc"
