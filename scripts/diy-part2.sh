@@ -24,4 +24,6 @@ make defconfig > /dev/null 2>&1
 echo "luci-app-usb-printer has been excluded from the firmware."
 
 # 修改默认 IP
-sed -i 's/192.168.6.1/192.168.2.1/g' package/base-files/files/bin/config_generate
+# 将 192.168.6.1 和 192.168.1.1 都替换为 192.168.2.1
+sed -i 's/192\.168\.6\.1/192.168.2.1/g; s/192\.168\.1\.1/192.168.2.1/g' package/base-files/files/bin/config_generate
+        
