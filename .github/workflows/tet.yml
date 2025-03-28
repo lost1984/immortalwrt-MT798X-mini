@@ -1,0 +1,38 @@
+name: "编译 abt_asr3000 固件"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '选择 OpenWrt 版本'
+        required: true
+        type: choice
+        options:
+          - 23.05
+          - 24.10
+          - lede
+        default: '24.10'
+
+env:
+  DEVICE: abt_asr3000
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: 克隆源码
+      run: |
+        if [ "${{ github.event.inputs.version }}" == "23.05" ]; then
+          git clone https://github.com/padavanonly/immortalwrt-mt798x-23.05 -b openwrt-23.05 openwrt
+        elif [ "${{ github.event.inputs.version }}" == "24.10" ]; then
+          git clone https://github.com/padavanonly/immortalwrt-mt798x-24.10 -b 2410 openwrt
+        else
+          git clone https://github.com/coolsnowwolf/lede -b master openwrt
+        fi
+
+    - name: 加载配置并编译
+      run: |
+        cd openwrt
+        cp ../${{ github.event.inputs.version == 'lede' && 'Lede.config' || github.event.inputs.version == '23.05' && '2305.config' || '2410.config' }} .config
+        make defconfig
+        make -j$(nproc)
