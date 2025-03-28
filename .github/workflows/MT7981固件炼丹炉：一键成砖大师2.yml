@@ -13,20 +13,17 @@ on:
           - lede
         default: '24.10'
       device:
-        description: '选择要编译的机型'
+        description: '选择要编译的机型（注意：23.05 不支持 huasifei_wh3000-emmc 和部分 usboffload 机型；Lede 支持更多机型）'
         required: true
         type: choice
         options:
-          # 原有的 MT7981 设备 (适用于 23.05 和 24.10)
+          # 23.05 和 24.10 通用机型
           - abt_asr3000
           - cetron_ct3003
           - cmcc_a10
           - cmcc_rax3000m-emmc
           - cmcc_rax3000m
-          - cmcc_rax3000m-emmc-usboffload
-          - cmcc_rax3000m-usboffload
           - h3c_nx30pro
-          - huasifei_wh3000-emmc
           - imou_lc-hx3001
           - jcg_q30
           - konka_komi-a31
@@ -38,7 +35,11 @@ on:
           - xiaomi_mi-router-ax3000t-stock
           - xiaomi_mi-router-wr30u-112m
           - xiaomi_mi-router-wr30u-stock
-          # Lede 源码支持的设备
+          # 24.10 独有机型
+          - huasifei_wh3000-emmc
+          - cmcc_rax3000m-emmc-usboffload
+          - cmcc_rax3000m-usboffload
+          # Lede 独有机型
           - asus_tuf-ax4200
           - asus_tuf-ax6000
           - bananapi_bpi-r3
@@ -80,7 +81,7 @@ on:
           - xiaomi_redmi-router-ax6000
 
 permissions:
-  contents: write  # 包含 releases 的写权限
+  contents: write
 
 env:
   REPO_URL: ${{ github.event.inputs.version == '23.05' && 'https://github.com/padavanonly/immortalwrt-mt798x-23.05' || github.event.inputs.version == '24.10' && 'https://github.com/padavanonly/immortalwrt-mt798x-24.10' || 'https://github.com/coolsnowwolf/lede' }}
@@ -93,8 +94,44 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 明确使用 Ubuntu 22.04 LTS
+    runs-on: ubuntu-22.04
     steps:
+    - name: 检查机型支持情况
+      run: |
+        # 定义支持机型的列表
+        SUPPORTED_2305="abt_asr3000 cetron_ct3003 cmcc_a10 cmcc_rax3000m-emmc cmcc_rax3000m h3c_nx30pro imou_lc-hx3001 jcg_q30 konka_komi-a31 livinet_zr-3020 mt7981-360-t7-108M mt7981-clt-r30b1 mt7981-clt-r30b1-112M xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-stock xiaomi_mi-router-wr30u-112m xiaomi_mi-router-wr30u-stock"
+        SUPPORTED_2410="huasifei_wh3000-emmc abt_asr3000 cetron_ct3003 cmcc_a10 cmcc_rax3000m-emmc cmcc_rax3000m cmcc_rax3000m-emmc-usboffload cmcc_rax3000m-usboffload h3c_nx30pro imou_lc-hx3001 jcg_q30 konka_komi-a31 livinet_zr-3020 mt7981-360-t7-108M mt7981-clt-r30b1 mt7981-clt-r30b1-112M xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-stock xiaomi_mi-router-wr30u-112m xiaomi_mi-router-wr30u-stock"
+        SUPPORTED_LEDE="abt_asr3000 asus_tuf-ax4200 asus_tuf-ax6000 bananapi_bpi-r3 bananapi_bpi-r3-mini-emmc bananapi_bpi-r3-mini-nand bananapi_bpi-r4 bananapi_bpi-r4-poe cetron_ct3003 cetron_ct3003-mod cmcc_a10 cmcc_a10-mod cmcc_rax3000m-emmc cmcc_rax3000m-nand cmcc_xr30-nand cudy_tr3000-mod cudy_tr3000-v1 fzs_5gcpe-p3 glinet_gl-mt2500 glinet_gl-mt3000 glinet_gl-mt6000 glinet_gl-x3000 glinet_gl-xe3000 h3c_magic-nx30-pro huasifei_wh3000-emmc hf_m7986r1-emmc hf_m7986r1-nand imou_lc-hx3001 jcg_q30-pro jdcloud_re-cs-05 konka_komi-a31 mediatek_mt7986a-rfb mediatek_mt7986b-rfb mediatek_mt7988a-rfb netcore_n60 netcore_n60-pro nokia_ea0326gmp openembed_som7981 qihoo_360t7 ruijie_rg-x60-pro tenbay_wr3000k tplink_tl-xdr4288 tplink_tl-xdr6086 tplink_tl-xdr6088 tplink_tl-xtr8488 xiaomi_redmi-router-ax6000"
+        
+        # 检查所选机型是否支持所选版本
+        if [ "${{ github.event.inputs.version }}" == "23.05" ]; then
+          if echo "$SUPPORTED_2305" | grep -qw "${{ github.event.inputs.device }}"; then
+            echo "✅ 机型 ${{ github.event.inputs.device }} 在 OpenWrt 23.05 中支持"
+          else
+            echo "❌ 错误：机型 ${{ github.event.inputs.device }} 在 OpenWrt 23.05 中不支持"
+            exit 1
+          fi
+        elif [ "${{ github.event.inputs.version }}" == "24.10" ]; then
+          if echo "$SUPPORTED_2410" | grep -qw "${{ github.event.inputs.device }}"; then
+            echo "✅ 机型 ${{ github.event.inputs.device }} 在 OpenWrt 24.10 中支持"
+          else
+            echo "❌ 错误：机型 ${{ github.event.inputs.device }} 在 OpenWrt 24.10 中不支持"
+            exit 1
+          fi
+        else  # lede
+          if echo "$SUPPORTED_LEDE" | grep -qw "${{ github.event.inputs.device }}"; then
+            echo "✅ 机型 ${{ github.event.inputs.device }} 在 Lede 中支持"
+          else
+            echo "❌ 错误：机型 ${{ github.event.inputs.device }} 在 Lede 中不支持"
+            exit 1
+          fi
+        fi
+
+    # 其余步骤保持不变，从“检出代码”开始
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    # ...（以下步骤与原代码一致，略去以节省篇幅，需要时可直接补充）
     - name: 检出代码
       uses: actions/checkout@v4
 
