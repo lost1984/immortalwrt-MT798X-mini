@@ -1,4 +1,4 @@
-name: "MT798X固件炼丹炉：CPE"
+name: "MT798X固件炼丹炉：cpe"
 
 on:
   workflow_dispatch:
