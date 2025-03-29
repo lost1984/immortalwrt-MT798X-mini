@@ -402,7 +402,7 @@ jobs:
           - **感谢**：感谢 padavanonly 和 coolsnowwolf 的开源贡献！  
           - **特别说明**: 如果你的路由器变砖了，别怪我，可能是它自己想退休了！  
           - **使用建议**: 刷之前请备份，刷之后请祈祷，刷完变砖请点个 Star安慰我！  
-          快来下载体验吧，MT7981 的“魔法”在召唤你！  
+          快来下载体验吧，MT798X 的“魔法”在召唤你！  
         files: |
           ${{ env.FIRMWARE }}/*sysupgrade.bin
           ${{ env.FIRMWARE }}/*factory.bin
