@@ -1,4 +1,4 @@
-name: "MT7981固件炼丹炉：一键成砖大师2"
+name: "MT798X固件炼丹炉：一键成砖大师"
 
 on:
   workflow_dispatch:
@@ -265,6 +265,7 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
+
     - name: 调试：检查文件是否存在
       run: |
         ls -la $GITHUB_WORKSPACE/scripts/
@@ -389,7 +390,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: "v${{ github.event.inputs.version }}_${{ env.DEVICE }}_${{ env.FILE_DATE }}"
-        name: "MT7981 固件 ${{ github.event.inputs.version }} - ${{ env.DEVICE }}"
+        name: "MT798X 固件 ${{ github.event.inputs.version }} - ${{ env.DEVICE }}"
         body: |
           🎉 **砖厂大师最新力作发布啦！** 🎉  
           经过无数次“烧砖”实验，这款固件终于出炉！  
@@ -397,12 +398,14 @@ jobs:
           - **机型**: ${{ env.DEVICE }}  
           - **管理地址**：192.168.2.1  
           - **密码**：${{ github.event.inputs.version == 'lede' && 'password' || '空' }}  
+          - **源码来源**：${{ github.event.inputs.version == 'lede' && 'https://github.com/coolsnowwolf/lede' || (github.event.inputs.version == '23.05' && 'https://github.com/padavanonly/immortalwrt-mt798x-23.05' || 'https://github.com/padavanonly/immortalwrt-mt798x-24.10') }}  
+          - **感谢**：感谢 padavanonly 和 coolsnowwolf 的开源贡献！  
           - **特别说明**: 如果你的路由器变砖了，别怪我，可能是它自己想退休了！  
           - **使用建议**: 刷之前请备份，刷之后请祈祷，刷完变砖请点个 Star安慰我！  
           快来下载体验吧，MT7981 的“魔法”在召唤你！  
         files: |
-          ${{ env.FIRMWARE }}/*.bin
-          ${{ env.FIRMWARE }}/*.zip
+          ${{ env.FIRMWARE }}/*sysupgrade.bin
+          ${{ env.FIRMWARE }}/*factory.bin
         draft: false
         prerelease: false
       env:
@@ -411,8 +414,18 @@ jobs:
     - name: 上传固件到私有 WebDAV
       if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
       run: |
-        for file in ${{ env.FIRMWARE }}/*.zip; do
-          curl -u ${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASSWORD }} \
-            -T "$file" \
-            "${{ secrets.WEBDAV_URL }}/${{ github.event.inputs.version }}/${{ env.DEVICE }}/$(basename $file)"
-        done
+        # 检查 WebDAV 配置是否完整
+        if [ -z "${{ secrets.WEBDAV_URL }}" ] || [ -z "${{ secrets.WEBDAV_USER }}" ] || [ -z "${{ secrets.WEBDAV_PASSWORD }}" ]; then
+          echo "⚠️ WebDAV 配置不完整（缺少 WEBDAV_URL、WEBDAV_USER 或 WEBDAV_PASSWORD），跳过上传到 WebDAV"
+        else
+          # 如果配置完整，则执行上传
+          for file in ${{ env.FIRMWARE }}/*.zip; do
+            echo "上传 $file 到 WebDAV..."
+            curl -u ${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASSWORD }} \
+              -T "$file" \
+              "${{ secrets.WEBDAV_URL }}/${{ github.event.inputs.version }}/${{ env.DEVICE }}/$(basename $file)" || {
+                echo "⚠️ 上传 $file 失败，但将继续处理其他文件"
+              }
+            echo "成功上传: $file"
+          done
+        fi
