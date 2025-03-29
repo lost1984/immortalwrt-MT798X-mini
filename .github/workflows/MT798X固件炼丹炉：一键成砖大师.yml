@@ -28,7 +28,7 @@ on:
           - xiaomi_mi-router-wr30u-stock
           - cmcc_rax3000m-emmc-usboffload
           - cmcc_rax3000m-usboffload
-        default: 'cmcc_rax3000m-usboffload'
+        default: 'konka_komi-a31'
 
 permissions:
   contents: write
