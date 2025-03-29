@@ -13,7 +13,7 @@ on:
           - lede
         default: '24.10'
       device:
-        description: '选择要编译的机型（注意：23.05 不支持 huasifei_wh3000-emmc 和部分 usboffload 机型；Lede 支持更多机型）'
+        description: '选择要编译的机型（注意：23.05 不支持 huasifei_wh3000-emmc 和部分 usboffload 机型；24.10 独有机型包括 huasifei_wh3000-emmc、cmcc_rax3000m-emmc-usboffload、cmcc_rax3000m-usboffload；Lede 支持更多机型，如 asus_tuf-ax4200、xiaomi_redmi-router-ax6000 等）'
         required: true
         type: choice
         options:
@@ -84,8 +84,6 @@ permissions:
   contents: write
 
 env:
-  REPO_URL: ${{ github.event.inputs.version == '23.05' && 'https://github.com/padavanonly/immortalwrt-mt798x-23.05' || github.event.inputs.version == '24.10' && 'https://github.com/padavanonly/immortalwrt-mt798x-24.10' || 'https://github.com/coolsnowwolf/lede' }}
-  REPO_BRANCH: ${{ github.event.inputs.version == '23.05' && 'openwrt-23.05' || github.event.inputs.version == '24.10' && '2410' || 'master' }}
   BASE_CONFIG_FILE: ${{ github.event.inputs.version == 'lede' && 'Lede.config' || github.event.inputs.version == '23.05' && '2305.config' || '2410.config' }}
   DIY_P1_SH: scripts/diy-part1.sh
   DIY_P2_SH: scripts/diy-part2.sh
@@ -100,53 +98,34 @@ jobs:
       run: |
         VERSION="${{ github.event.inputs.version }}"
         DEVICE="${{ github.event.inputs.device }}"
-        REPO_URL="$REPO_URL"
-        REPO_BRANCH="$REPO_BRANCH"
-        BASE_CONFIG_FILE="$BASE_CONFIG_FILE"
 
-        # 定义支持机型的列表
-        SUPPORTED_2305="abt_asr3000 cetron_ct3003 cmcc_a10 cmcc_rax3000m-emmc cmcc_rax3000m h3c_nx30pro imou_lc-hx3001 jcg_q30 konka_komi-a31 livinet_zr-3020 mt7981-360-t7-108M mt7981-clt-r30b1 mt7981-clt-r30b1-112M xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-stock xiaomi_mi-router-wr30u-112m xiaomi_mi-router-wr30u-stock"
-        SUPPORTED_2410="huasifei_wh3000-emmc abt_asr3000 cetron_ct3003 cmcc_a10 cmcc_rax3000m-emmc cmcc_rax3000m cmcc_rax3000m-emmc-usboffload cmcc_rax3000m-usboffload h3c_nx30pro imou_lc-hx3001 jcg_q30 konka_komi-a31 livinet_zr-3020 mt7981-360-t7-108M mt7981-clt-r30b1 mt7981-clt-r30b1-112M xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-stock xiaomi_mi-router-wr30u-112m xiaomi_mi-router-wr30u-stock"
-        SUPPORTED_LEDE="abt_asr3000 asus_tuf-ax4200 asus_tuf-ax6000 bananapi_bpi-r3 bananapi_bpi-r3-mini-emmc bananapi_bpi-r3-mini-nand bananapi_bpi-r4 bananapi_bpi-r4-poe cetron_ct3003 cetron_ct3003-mod cmcc_a10 cmcc_a10-mod cmcc_rax3000m-emmc cmcc_rax3000m-nand cmcc_xr30-nand cudy_tr3000-mod cudy_tr3000-v1 fzs_5gcpe-p3 glinet_gl-mt2500 glinet_gl-mt3000 glinet_gl-mt6000 glinet_gl-x3000 glinet_gl-xe3000 h3c_magic-nx30-pro huasifei_wh3000-emmc hf_m7986r1-emmc hf_m7986r1-nand imou_lc-hx3001 jcg_q30-pro jdcloud_re-cs-05 konka_komi-a31 livinet_zr-3020 mediatek_mt7986a-rfb mediatek_mt7986b-rfb mediatek_mt7988a-rfb netcore_n60 netcore_n60-pro nokia_ea0326gmp openembed_som7981 qihoo_360t7 ruijie_rg-x60-pro tenbay_wr3000k tplink_tl-xdr4288 tplink_tl-xdr6086 tplink_tl-xdr6088 tplink_tl-xtr8488 xiaomi_redmi-router-ax6000 mt7981-360-t7-108M mt7981-clt-r30b1 mt7981-clt-r30b1-112M xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-stock xiaomi_mi-router-wr30u-112m xiaomi_mi-router-wr30u-stock"
-
-        # 检查所选机型是否支持所选版本
-        if [ "$VERSION" == "23.05" ]; then
-          if echo "$SUPPORTED_2305" | grep -qw "$DEVICE"; then
-            echo "✅ 机型 $DEVICE 在 OpenWrt 23.05 中支持"
-          else
-            echo "❌ 错误：机型 $DEVICE 在 OpenWrt 23.05 中不支持"
-            exit 1
-          fi
-        elif [ "$VERSION" == "24.10" ]; then
-          if echo "$SUPPORTED_2410" | grep -qw "$DEVICE"; then
-            echo "✅ 机型 $DEVICE 在 OpenWrt 24.10 中支持"
-          else
-            echo "❌ 错误：机型 $DEVICE 在 OpenWrt 24.10 中不支持"
-            exit 1
-          fi
-        else  # lede
-          if echo "$SUPPORTED_LEDE" | grep -qw "$DEVICE"; then
-            echo "✅ 机型 $DEVICE 在 Lede 中支持"
-          else
-            echo "❌ 错误：机型 $DEVICE 在 Lede 中不支持"
-            exit 1
-          fi
-        fi
-
-        # 23.05 版本特定机型修正为 24.10 源码
+        # 版本切换
         if [ "$VERSION" == "23.05" ]; then
           case "$DEVICE" in
-            "cmcc_rax3000m-usboffload" | "cmcc_rax3000m-emmc-usboffload")
-              echo "23.05 版本中 $DEVICE 自动修正为 24.10 源码"
+            "cmcc_rax3000m-usboffload" | "cmcc_rax3000m-emmc-usboffload" | "huasifei_wh3000-emmc")
+              echo "23.05 版本中 $DEVICE 不支持，自动修正为 24.10 源码"
               VERSION="24.10"
               REPO_URL="https://github.com/padavanonly/immortalwrt-mt798x-24.10"
               REPO_BRANCH="2410"
               BASE_CONFIG_FILE="2410.config"
               ;;
+            *)
+              REPO_URL="https://github.com/padavanonly/immortalwrt-mt798x-23.05"
+              REPO_BRANCH="openwrt-23.05"
+              BASE_CONFIG_FILE="2305.config"
+              ;;
           esac
+        elif [ "$VERSION" == "24.10" ]; then
+          REPO_URL="https://github.com/padavanonly/immortalwrt-mt798x-24.10"
+          REPO_BRANCH="2410"
+          BASE_CONFIG_FILE="2410.config"
+        else  # lede
+          REPO_URL="https://github.com/coolsnowwolf/lede"
+          REPO_BRANCH="master"
+          BASE_CONFIG_FILE="Lede.config"
         fi
 
-        # 23.05 和 24.10 版本特定机型修正为 lede 源码
+        # 23.05 和 24.10 切换到 Lede
         LEDE_DEVICES="asus_tuf-ax4200 asus_tuf-ax6000 bananapi_bpi-r3 bananapi_bpi-r3-mini-emmc bananapi_bpi-r3-mini-nand bananapi_bpi-r4 bananapi_bpi-r4-poe cetron_ct3003-mod cmcc_a10-mod cmcc_rax3000m-nand cmcc_xr30-nand cudy_tr3000-mod cudy_tr3000-v1 fzs_5gcpe-p3 glinet_gl-mt2500 glinet_gl-mt3000 glinet_gl-mt6000 glinet_gl-x3000 glinet_gl-xe3000 h3c_magic-nx30-pro hf_m7986r1-emmc hf_m7986r1-nand jcg_q30-pro jdcloud_re-cs-05 mediatek_mt7986a-rfb mediatek_mt7986b-rfb mediatek_mt7988a-rfb netcore_n60 netcore_n60-pro nokia_ea0326gmp openembed_som7981 qihoo_360t7 ruijie_rg-x60-pro tenbay_wr3000k tplink_tl-xdr4288 tplink_tl-xdr6086 tplink_tl-xdr6088 tplink_tl-xtr8488 xiaomi_redmi-router-ax6000"
         if [ "$VERSION" == "23.05" ] || [ "$VERSION" == "24.10" ]; then
           for lede_device in $LEDE_DEVICES; do
@@ -161,7 +140,7 @@ jobs:
           done
         fi
 
-        # 24.10 版本特定机型转换
+        # 机型转换
         if [ "$VERSION" == "24.10" ]; then
           case "$DEVICE" in
             "cmcc_rax3000m-nand")
@@ -181,10 +160,7 @@ jobs:
               echo "24.10 版本中 jcg_q30-pro 自动转换为 jcg_q30"
               ;;
           esac
-        fi
-
-        # lede 版本特定机型转换
-        if [ "$VERSION" == "lede" ]; then
+        elif [ "$VERSION" == "lede" ]; then
           case "$DEVICE" in
             "cmcc_rax3000m")
               DEVICE="cmcc_rax3000m-nand"
@@ -203,10 +179,7 @@ jobs:
               echo "lede 版本中 jcg_q30 自动转换为 jcg_q30-pro"
               ;;
           esac
-        fi
-
-        # 23.05 版本特定机型转换（仅对非 lede 生效）
-        if [ "$VERSION" == "23.05" ]; then
+        elif [ "$VERSION" == "23.05" ]; then
           case "$DEVICE" in
             "cmcc_rax3000m-usboffload")
               DEVICE="cmcc_rax3000m"
@@ -215,10 +188,6 @@ jobs:
             "cmcc_rax3000m-emmc-usboffload")
               DEVICE="cmcc_rax3000m-emmc"
               echo "转换机型：cmcc_rax3000m-emmc-usboffload -> cmcc_rax3000m-emmc (23.05)"
-              ;;
-            "huasifei_wh3000-emmc")
-              echo "错误：huasifei_wh3000-emmc 在 23.05 中不支持"
-              exit 1
               ;;
           esac
         fi
@@ -244,14 +213,17 @@ jobs:
       run: |
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
         sudo docker image prune --all --force
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
-          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
-          libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
-          libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 \
-          python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo \
-          uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zip
+        for i in {1..3}; do
+          sudo -E apt-get -qq update && sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+            git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
+            libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 \
+            python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo \
+            uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zip && break
+          echo "依赖安装失败，重试 $i/3..."
+          sleep 5
+        done
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
@@ -262,9 +234,16 @@ jobs:
       working-directory: /workdir
       run: |
         df -hT $PWD
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        for i in {1..3}; do
+          git clone $REPO_URL -b $REPO_BRANCH openwrt && break
+          echo "克隆失败，重试 $i/3..."
+          sleep 5
+        done
+        if [ ! -d "openwrt" ]; then
+          echo "错误：克隆源码失败"
+          exit 1
+        fi
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
 
     - name: 调试：检查文件是否存在
       run: |
@@ -290,7 +269,12 @@ jobs:
       run: |
         cd openwrt
         [ -e $GITHUB_WORKSPACE/files ] && mv $GITHUB_WORKSPACE/files $GITHUB_WORKSPACE/openwrt/files
-        [ -e $GITHUB_WORKSPACE/$BASE_CONFIG_FILE ] && cp $GITHUB_WORKSPACE/$BASE_CONFIG_FILE .config
+        if [ -e "$GITHUB_WORKSPACE/$BASE_CONFIG_FILE" ]; then
+          cp "$GITHUB_WORKSPACE/$BASE_CONFIG_FILE" .config
+        else
+          echo "错误：配置文件 $BASE_CONFIG_FILE 不存在"
+          exit 1
+        fi
         if [ "${{ github.event.inputs.version }}" == "lede" ]; then
           # 替换 Lede.config 中的目标设备配置
           sed -i "/CONFIG_TARGET_mediatek_filogic_DEVICE_/d" .config
@@ -347,6 +331,12 @@ jobs:
       if: steps.check_config.outputs.config_status == 'success'
       run: |
         cd openwrt
+        df -hT
+        FREE_SPACE=$(df -hT . | tail -1 | awk '{print $4}' | grep -o '[0-9]\+')
+        if [ "$FREE_SPACE" -lt 10 ]; then
+          echo "错误：磁盘空间不足（剩余 ${FREE_SPACE}G），需要至少 10G"
+          exit 1
+        fi
         echo -e "$(nproc) thread compile for $DEVICE"
         make -j$(nproc) V=s || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
@@ -366,15 +356,15 @@ jobs:
         echo "固件目录: $FIRMWARE_DIR"
         echo "FIRMWARE=$FIRMWARE_DIR" >> $GITHUB_ENV
 
-        if ls $FIRMWARE_DIR/*.bin >/dev/null 2>&1; then
-          for bin_file in *.bin; do
+        if ls $FIRMWARE_DIR/*sysupgrade.bin $FIRMWARE_DIR/*factory.bin >/dev/null 2>&1; then
+          for bin_file in *sysupgrade.bin *factory.bin; do
             zip_filename="${bin_file%.bin}${FILE_DATE}.zip"
             zip -r "$zip_filename" "$bin_file"
             echo "已压缩为: $zip_filename"
           done
           echo "status=success" >> $GITHUB_OUTPUT
         else
-          echo "错误：未找到 $DEVICE 的固件，退出"
+          echo "错误：未找到 $DEVICE 的 sysupgrade.bin 或 factory.bin 固件，退出"
           exit 1
         fi
 
@@ -385,6 +375,15 @@ jobs:
         name: OpenWrt_firmware_${{ github.event.inputs.version }}_${{ env.DEVICE }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
+    - name: 清理不需要的文件
+      if: steps.check_config.outputs.config_status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
+      run: |
+        echo "清理 ${FIRMWARE} 目录下的 kernel.bin 和 .zip 文件..."
+        find ${{ env.FIRMWARE }} -type f -name "*kernel.bin" -exec rm -v {} \;
+        find ${{ env.FIRMWARE }} -type f -name "*.zip" -exec rm -v {} \;
+        echo "清理完成，当前目录内容："
+        ls -lh ${{ env.FIRMWARE }}
+
     - name: 发布固件：砖厂大师的最新杰作
       if: steps.check_config.outputs.config_status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
       uses: softprops/action-gh-release@v1
@@ -392,16 +391,24 @@ jobs:
         tag_name: "v${{ github.event.inputs.version }}_${{ env.DEVICE }}_${{ env.FILE_DATE }}"
         name: "MT798X 固件 ${{ github.event.inputs.version }} - ${{ env.DEVICE }}"
         body: |
-          🎉 **砖厂大师最新力作发布啦！** 🎉  
-          经过无数次“烧砖”实验，这款固件终于出炉！  
-          - **版本**: ${{ github.event.inputs.version }}  
-          - **机型**: ${{ env.DEVICE }}  
+          🎉 **MT798X 固件发布：砖厂大师的最新杰作！** 🎉  
+          经过无数次“烧砖”实验，这款固件终于问世！  
+          - **版本**：${{ github.event.inputs.version }}  
+          - **机型**：${{ env.DEVICE }}  
           - **管理地址**：192.168.2.1  
-          - **密码**：${{ github.event.inputs.version == 'lede' && 'password' || '空' }}  
+          - **默认用户名**：root  
+          - **默认密码**：${{ github.event.inputs.version == 'lede' && 'password' || '空' }}  
           - **源码来源**：${{ github.event.inputs.version == 'lede' && 'https://github.com/coolsnowwolf/lede' || (github.event.inputs.version == '23.05' && 'https://github.com/padavanonly/immortalwrt-mt798x-23.05' || 'https://github.com/padavanonly/immortalwrt-mt798x-24.10') }}  
+          - **内核版本**：${{ github.event.inputs.version == 'lede' && '5.15（具体版本可能随 Lede 更新而变化）' || (github.event.inputs.version == '23.05' && '5.4.255' || '5.4.284') }}  
           - **感谢**：感谢 padavanonly 和 coolsnowwolf 的开源贡献！  
-          - **特别说明**: 如果你的路由器变砖了，别怪我，可能是它自己想退休了！  
-          - **使用建议**: 刷之前请备份，刷之后请祈祷，刷完变砖请点个 Star安慰我！  
+          - **特别说明**：  
+            - 本发布仅包含 `sysupgrade.bin` 和 `factory.bin` 文件，`kernel.bin` 和 `.zip` 文件已移除。  
+            - 如果你的路由器变砖了，别怪我，可能是它自己想退休了！  
+          - **使用建议**：  
+            1. 刷机前请备份原固件，以防万一。  
+            2. 使用 `sysupgrade.bin` 进行系统升级，`factory.bin` 用于恢复出厂设置。  
+            3. 刷机后请检查管理地址和密码是否正确。  
+            4. 如果刷机失败或变砖，请尝试恢复，或在 Issues 中反馈（附上日志）。  
           快来下载体验吧，MT798X 的“魔法”在召唤你！  
         files: |
           ${{ env.FIRMWARE }}/*sysupgrade.bin
